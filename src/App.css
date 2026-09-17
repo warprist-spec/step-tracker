@@ -152,3 +152,21 @@ body {
   margin-top: 4px;
   text-transform: uppercase;
 }
+.settings-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #1a1a2e;
+  color: #fff;
+  border: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.settings-btn:active {
+  background: #252540;
+}

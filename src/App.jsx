@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { registerPlugin } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
+import Settings from './Settings'
 import './App.css'
 
 const StepCounterNative = registerPlugin('StepCounter')
@@ -35,7 +36,8 @@ function App() {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
   const [history, setHistory] = useState([])
-  const goal = 10000
+  const [view, setView] = useState('main')
+  const [goal, setGoal] = useState(10000)
 
   const animatedSteps = useAnimatedNumber(steps)
   const progress = Math.min(steps / goal, 1)
@@ -47,13 +49,21 @@ function App() {
 
   const km = (steps * 0.00075).toFixed(2)
 
+  // Загружаем цель при запуске
+  useEffect(() => {
+    async function loadGoal() {
+      const { value } = await Preferences.get({ key: 'goal' })
+      if (value) setGoal(Number(value))
+    }
+    loadGoal()
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     let interval = null
 
     async function init() {
       try {
-        // 1. Запускаем фоновый сервис
         try {
           await StepCounterNative.startService()
           console.log('Фоновый сервис запущен')
@@ -61,7 +71,6 @@ function App() {
           console.log('Ошибка запуска сервиса:', e)
         }
 
-        // 2. Функция чтения шагов
         const fetchSteps = async () => {
           try {
             const result = await StepCounterNative.getTodaySteps()
@@ -69,7 +78,6 @@ function App() {
               setSteps(result.steps)
               setLoading(false)
 
-              // Сохраняем в историю
               const todayKey = new Date().toISOString().slice(0, 10)
               await Preferences.set({
                 key: 'history_' + todayKey,
@@ -84,13 +92,9 @@ function App() {
           }
         }
 
-        // Первый запрос
         await fetchSteps()
-
-        // 3. Опрашиваем каждые 5 секунд
         interval = setInterval(fetchSteps, 5000)
 
-        // Убираем статус загрузки через 5 секунд, даже если данных нет
         setTimeout(() => {
           if (!cancelled) setLoading(false)
         }, 5000)
@@ -131,8 +135,23 @@ function App() {
 
   const maxHistorySteps = Math.max(...history.map((d) => d.steps), goal, 1)
 
+  // Экран настроек
+  if (view === 'settings') {
+    return (
+      <Settings
+        onBack={() => setView('main')}
+        onGoalChanged={(newGoal) => setGoal(newGoal)}
+      />
+    )
+  }
+
+  // Главный экран
   return (
     <div className="app">
+      <button className="settings-btn" onClick={() => setView('settings')}>
+        ⚙️
+      </button>
+
       <header className="header">
         <h1>Шагомер! 🎉</h1>
         <p className="date">
