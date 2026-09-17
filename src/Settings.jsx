@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
+import { registerPlugin } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import './Settings.css'
+
+const StepCounterNative = registerPlugin('StepCounter')
 
 export default function Settings({ onBack, onGoalChanged }) {
   const [goal, setGoal] = useState(10000)
@@ -8,7 +11,6 @@ export default function Settings({ onBack, onGoalChanged }) {
   const [manualDate, setManualDate] = useState('')
   const [manualSteps, setManualSteps] = useState('')
 
-  // Загружаем цель при открытии
   useEffect(() => {
     async function load() {
       const { value } = await Preferences.get({ key: 'goal' })
@@ -25,13 +27,12 @@ export default function Settings({ onBack, onGoalChanged }) {
   }
 
   const resetToday = async () => {
-    const todayKey = new Date().toISOString().slice(0, 10)
-    await Preferences.set({ key: 'history_' + todayKey, value: '0' })
-
-    // Также сбрасываем "сырое" значение датчика в Java
-    await Preferences.set({ key: 'resetRequested', value: 'true' })
-
-    alert('Сегодняшние шаги сброшены. Закройте приложение и откройте заново.')
+    try {
+      await StepCounterNative.resetToday()
+      alert('Сегодняшние шаги сброшены')
+    } catch (e) {
+      alert('Ошибка сброса: ' + e.message)
+    }
   }
 
   const saveManualSteps = async () => {
@@ -39,11 +40,17 @@ export default function Settings({ onBack, onGoalChanged }) {
       alert('Заполните обе даты и шаги')
       return
     }
-    const key = 'history_' + manualDate
-    await Preferences.set({ key, value: String(Number(manualSteps)) })
-    alert(`Сохранено: ${manualDate} → ${manualSteps} шагов`)
-    setManualDate('')
-    setManualSteps('')
+    try {
+      await StepCounterNative.setManualSteps({
+        date: manualDate,
+        steps: Number(manualSteps),
+      })
+      alert(`Сохранено: ${manualDate} → ${manualSteps} шагов`)
+      setManualDate('')
+      setManualSteps('')
+    } catch (e) {
+      alert('Ошибка: ' + e.message)
+    }
   }
 
   return (

@@ -49,7 +49,6 @@ function App() {
 
   const km = (steps * 0.00075).toFixed(2)
 
-  // Загружаем цель при запуске
   useEffect(() => {
     async function loadGoal() {
       const { value } = await Preferences.get({ key: 'goal' })
@@ -77,12 +76,6 @@ function App() {
             if (!cancelled && result && typeof result.steps === 'number') {
               setSteps(result.steps)
               setLoading(false)
-
-              const todayKey = new Date().toISOString().slice(0, 10)
-              await Preferences.set({
-                key: 'history_' + todayKey,
-                value: String(result.steps),
-              })
             }
           } catch (e) {
             if (!cancelled) {
@@ -92,8 +85,34 @@ function App() {
           }
         }
 
+        const fetchHistory = async () => {
+          try {
+            const result = await StepCounterNative.getHistory({ days: 7 })
+            if (!cancelled && result && result.history) {
+              const days = []
+              for (let i = 6; i >= 0; i--) {
+                const d = new Date()
+                d.setDate(d.getDate() - i)
+                const key = d.toISOString().slice(0, 10)
+                days.push({
+                  date: d.toLocaleDateString('ru-RU', { weekday: 'short' }),
+                  steps: Number(result.history[key] || 0),
+                })
+              }
+              setHistory(days)
+            }
+          } catch (e) {
+            console.log('История не загрузилась:', e)
+          }
+        }
+
         await fetchSteps()
-        interval = setInterval(fetchSteps, 5000)
+        await fetchHistory()
+
+        interval = setInterval(async () => {
+          await fetchSteps()
+          await fetchHistory()
+        }, 5000)
 
         setTimeout(() => {
           if (!cancelled) setLoading(false)
@@ -114,28 +133,8 @@ function App() {
     }
   }, [])
 
-  // История за 7 дней
-  useEffect(() => {
-    async function loadHistory() {
-      const days = []
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date()
-        d.setDate(d.getDate() - i)
-        const key = 'history_' + d.toISOString().slice(0, 10)
-        const { value } = await Preferences.get({ key })
-        days.push({
-          date: d.toLocaleDateString('ru-RU', { weekday: 'short' }),
-          steps: Number(value || 0),
-        })
-      }
-      setHistory(days)
-    }
-    loadHistory()
-  }, [steps])
-
   const maxHistorySteps = Math.max(...history.map((d) => d.steps), goal, 1)
 
-  // Экран настроек
   if (view === 'settings') {
     return (
       <Settings
@@ -145,7 +144,6 @@ function App() {
     )
   }
 
-  // Главный экран
   return (
     <div className="app">
       <button className="settings-btn" onClick={() => setView('settings')}>
