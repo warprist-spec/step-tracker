@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CapacitorPedometer } from '@capgo/capacitor-pedometer'
-import { Preferences } from '@capacitor/preferences'
+import { Backgroundstep } from 'capacitor-background-step'
 import './App.css'
 
 function useAnimatedNumber(target, duration = 600) {
@@ -45,55 +44,39 @@ function App() {
   const km = (steps * 0.00075).toFixed(2)
 
   useEffect(() => {
-    let listener = null
     let cancelled = false
+    let interval = null
 
     async function init() {
       try {
-        const perm = await CapacitorPedometer.requestPermissions()
-        if (perm.activityRecognition !== 'granted') {
-          if (!cancelled) setError('Нужно разрешение на физическую активность')
-          if (!cancelled) setLoading(false)
+        const permission = await Backgroundstep.checkAndRequestPermission()
+        if (!permission.granted) {
+          if (!cancelled) {
+            setError('Нужно разрешение на физическую активность')
+            setLoading(false)
+          }
           return
         }
 
-        await CapacitorPedometer.startMeasurementUpdates()
+        await Backgroundstep.serviceStart()
 
-        const today = new Date().toDateString()
-        const { value: savedDate } = await Preferences.get({ key: 'stepDate' })
-        const { value: savedBaseline } = await Preferences.get({ key: 'stepBaseline' })
-        let baseline = 0
-
-        try {
-          const current = await CapacitorPedometer.getMeasurement()
-          if (current && typeof current.numberOfSteps === 'number') {
-            const rawSteps = current.numberOfSteps
-            if (savedDate !== today) {
-              baseline = rawSteps
-              await Preferences.set({ key: 'stepDate', value: today })
-              await Preferences.set({ key: 'stepBaseline', value: String(baseline) })
-            } else {
-              baseline = Number(savedBaseline || 0)
+        const fetchSteps = async () => {
+          try {
+            const result = await Backgroundstep.getToday()
+            if (!cancelled && result && typeof result.steps === 'number') {
+              setSteps(result.steps)
+              setLoading(false)
             }
+          } catch (e) {
+            console.log('Ошибка получения шагов:', e)
           }
-        } catch (e) {
-          console.log('Начальное измерение не удалось:', e)
         }
 
-        listener = await CapacitorPedometer.addListener('measurement', (data) => {
-          if (!cancelled && data && typeof data.numberOfSteps === 'number') {
-            const todaySteps = Math.max(0, data.numberOfSteps - baseline)
-            setSteps(todaySteps)
-            setLoading(false)
-          }
-        })
-
-        setTimeout(() => {
-          if (!cancelled) setLoading(false)
-        }, 5000)
+        fetchSteps()
+        interval = setInterval(fetchSteps, 5000)
       } catch (e) {
         if (!cancelled) {
-          setError('Ошибка датчика: ' + (e?.message || e))
+          setError('Ошибка сервиса: ' + (e?.message || e))
           setLoading(false)
         }
       }
@@ -103,14 +86,14 @@ function App() {
 
     return () => {
       cancelled = true
-      if (listener && listener.remove) listener.remove()
+      if (interval) clearInterval(interval)
     }
   }, [])
 
   return (
     <div className="app">
       <header className="header">
-        <h1>Толя, смотри какая штука! 🎉</h1>
+        <h1>Шагомер! 🎉</h1>
         <p className="date">
           {new Date().toLocaleDateString('ru-RU', {
             day: 'numeric',
@@ -121,7 +104,14 @@ function App() {
 
       <div className="circle-wrapper">
         <svg className="progress-ring" width="300" height="300">
-          <circle className="ring-bg" cx="150" cy="150" r="130" strokeWidth="14" fill="transparent" />
+          <circle
+            className="ring-bg"
+            cx="150"
+            cy="150"
+            r="130"
+            strokeWidth="14"
+            fill="transparent"
+          />
           <circle
             className="ring-progress"
             cx="150"
@@ -132,16 +122,24 @@ function App() {
             strokeDasharray={circumference}
             strokeDashoffset={offset}
             strokeLinecap="round"
-            style={{ stroke: ringColor, filter: `drop-shadow(0 0 12px ${ringColor}99)` }}
+            style={{
+              stroke: ringColor,
+              filter: `drop-shadow(0 0 12px ${ringColor}99)`,
+            }}
           />
         </svg>
         <div className="circle-content">
-          <div className="steps-count">{animatedSteps.toLocaleString('ru-RU')}</div>
+          <div className="steps-count">
+            {animatedSteps.toLocaleString('ru-RU')}
+          </div>
           <div className="steps-label">🔥 шагов</div>
         </div>
       </div>
 
-      {loading && !error && <p className="status">Подключаюсь к датчику…</p>}
+      {loading && !error && (
+        <p className="status">Подключаюсь к сервису…</p>
+      )}
+
       {error && <p className="error">{error}</p>}
 
       <div className="km-card">
@@ -149,7 +147,9 @@ function App() {
         <span className="km-label">км</span>
       </div>
 
-      <div className="goal">Цель: {goal.toLocaleString('ru-RU')}</div>
+      <div className="goal">
+        Цель: {goal.toLocaleString('ru-RU')}
+      </div>
     </div>
   )
 }
