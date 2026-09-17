@@ -211,3 +211,54 @@ body {
   margin-top: 4px;
   text-transform: uppercase;
 }
+/* Пульсация кольца при достижении milestone */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.02); }
+  50% { transform: scale(1); }
+  75% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+.progress-ring.pulse {
+  animation: pulse 2s ease-out;
+  transform-origin: center;
+}
+
+/* Текст под кольцом */
+.below-ring {
+  margin-top: 24px;
+  text-align: center;
+  min-height: 36px;
+  transition: opacity 300ms ease, color 300ms ease;
+}
+
+.below-ring.empty {
+  font-size: 28px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.below-ring.milestone-100 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #b4ff39;
+}
+
+.below-ring.milestone-100-after {
+  font-size: 24px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.below-ring.milestone-150 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #b4ff39;
+}
+
+.below-ring.milestone-200 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #d4ff6b;
+}

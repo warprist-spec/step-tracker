@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { registerPlugin } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import { LocalNotifications } from '@capacitor/local-notifications'
@@ -41,9 +41,11 @@ function App() {
   const [history, setHistory] = useState([])
   const [view, setView] = useState('main')
   const [goal, setGoal] = useState(10000)
+  const [isPulsing, setIsPulsing] = useState(false)
 
   const animatedSteps = useAnimatedNumber(steps)
   const progress = Math.min(steps / goal, 1)
+  const percent = (steps / goal) * 100
   const circumference = 2 * Math.PI * 130
   const offset = circumference * (1 - progress)
 
@@ -51,6 +53,35 @@ function App() {
 
   const isGoalReached = progress >= 1
   const isEmpty = steps === 0
+
+  // Свечение кольца
+  const getGlow = () => {
+    if (progress >= 1) return 'drop-shadow(0 0 24px rgba(46, 204, 113, 0.6))'
+    if (progress >= 0.75) return 'drop-shadow(0 0 20px rgba(46, 204, 113, 0.5))'
+    if (progress >= 0.5) return 'drop-shadow(0 0 12px rgba(46, 204, 113, 0.3))'
+    return 'none'
+  }
+
+  // Какой milestone достигнут
+  const getMilestone = () => {
+    if (percent >= 200) return 200
+    if (percent >= 150) return 150
+    if (percent >= 100) return 100
+    return 0
+  }
+
+  const milestone = getMilestone()
+
+  // Текст под кольцом
+  const getBelowText = () => {
+    if (isEmpty && !loading) return { text: 'Начни двигаться', cls: 'empty' }
+    if (percent >= 200) return { text: 'Двойная цель!', cls: 'milestone-200' }
+    if (percent >= 150) return { text: 'Ты сделал это!', cls: 'milestone-150' }
+    if (percent >= 100) return { text: 'Цель достигнута!', cls: 'milestone-100-after' }
+    return null
+  }
+
+  const below = getBelowText()
 
   // Загрузка цели
   useEffect(() => {
@@ -76,45 +107,68 @@ function App() {
     requestNotifPermission()
   }, [])
 
-  const checkGoalReached = async (currentSteps, currentGoal) => {
-    if (currentSteps < currentGoal) return
+  // Проверка milestone
+  const checkMilestones = async (currentSteps, currentGoal) => {
+    if (currentGoal === 0) return
 
+    const percentNow = (currentSteps / currentGoal) * 100
     const today = new Date().toISOString().slice(0, 10)
-    const flagKey = 'notified_' + today
 
-    const { value: notified } = await Preferences.get({ key: flagKey })
-    if (notified === 'true') return
+    const checkOne = async (threshold) => {
+      if (percentNow < threshold) return false
 
-    try {
-      await Haptics.impact({ style: ImpactStyle.Heavy })
-      await Haptics.impact({ style: ImpactStyle.Heavy })
-      await Haptics.impact({ style: ImpactStyle.Heavy })
-    } catch (e) {
-      console.log('Вибрация не сработала:', e)
+      const flagKey = `milestone_${threshold}_${today}`
+      const { value } = await Preferences.get({ key: flagKey })
+      if (value === 'true') return false
+
+      await Preferences.set({ key: flagKey, value: 'true' })
+      return true
     }
 
-    try {
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            title: '🎉 Цель достигнута!',
-            body: `Ты прошёл ${currentSteps.toLocaleString('ru-RU')} шагов!`,
-            id: 1,
-            schedule: { at: new Date(Date.now() + 100) },
-          },
-        ],
-      })
-    } catch (e) {
-      console.log('Уведомление не отправилось:', e)
-    }
+    // Проверяем каждый milestone по очереди
+    const is100 = await checkOne(100)
+    const is150 = await checkOne(150)
+    const is200 = await checkOne(200)
 
-    await Preferences.set({ key: flagKey, value: 'true' })
+    if (is100 || is150 || is200) {
+      // Вибрация
+      try {
+        await Haptics.impact({ style: ImpactStyle.Heavy })
+        await Haptics.impact({ style: ImpactStyle.Heavy })
+        await Haptics.impact({ style: ImpactStyle.Heavy })
+      } catch (e) {
+        console.log('Вибрация не сработала:', e)
+      }
+
+      // Пульсация
+      setIsPulsing(true)
+      setTimeout(() => setIsPulsing(false), 2000)
+
+      // Уведомление (только для 100%)
+      if (is100) {
+        try {
+          await LocalNotifications.schedule({
+            notifications: [
+              {
+                title: '🎉 Цель достигнута!',
+                body: `Ты прошёл ${currentSteps.toLocaleString('ru-RU')} шагов!`,
+                id: 1,
+                schedule: { at: new Date(Date.now() + 100) },
+              },
+            ],
+          })
+        } catch (e) {
+          console.log('Уведомление не отправилось:', e)
+        }
+      }
+    }
   }
 
   // Основной цикл
   useEffect(() => {
     let cancelled = false
     let interval = null
+    let firstRun = true
 
     async function init() {
       try {
@@ -130,7 +184,27 @@ function App() {
             if (!cancelled && result && typeof result.steps === 'number') {
               setSteps(result.steps)
               setLoading(false)
-              await checkGoalReached(result.steps, goal)
+
+              // Проверяем milestones только при первом запуске (приложение было закрыто)
+              if (firstRun) {
+                const percentNow = (result.steps / goal) * 100
+                const today = new Date().toISOString().slice(0, 10)
+
+                // Если milestone был достигнут, пока приложение было закрыто
+                const thresholds = [100, 150, 200]
+                for (const t of thresholds) {
+                  if (percentNow >= t) {
+                    const flagKey = `milestone_${t}_${today}`
+                    const { value } = await Preferences.get({ key: flagKey })
+                    if (value !== 'true') {
+                      await Preferences.set({ key: flagKey, value: 'true' })
+                    }
+                  }
+                }
+              } else {
+                // Обычная проверка при каждом обновлении
+                await checkMilestones(result.steps, goal)
+              }
             }
           } catch (e) {
             if (!cancelled) {
@@ -164,6 +238,7 @@ function App() {
 
         await fetchSteps()
         await fetchHistory()
+        firstRun = false
 
         interval = setInterval(async () => {
           await fetchSteps()
@@ -229,7 +304,11 @@ function App() {
       </header>
 
       <div className="circle-wrapper">
-        <svg className="progress-ring" width="300" height="300">
+        <svg
+          className={`progress-ring ${isPulsing ? 'pulse' : ''}`}
+          width="300"
+          height="300"
+        >
           <circle
             className="ring-bg"
             cx="150"
@@ -248,6 +327,7 @@ function App() {
             strokeDasharray={circumference}
             strokeDashoffset={offset}
             strokeLinecap="round"
+            style={{ filter: getGlow() }}
           />
         </svg>
         <div className="circle-content">
@@ -260,8 +340,8 @@ function App() {
         </div>
       </div>
 
-      {isEmpty && !loading && (
-        <div className="empty-hint">Начни двигаться</div>
+      {below && (
+        <div className={`below-ring ${below.cls}`}>{below.text}</div>
       )}
 
       {loading && !error && (
