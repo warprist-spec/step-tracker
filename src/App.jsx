@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { registerPlugin } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
+import { LocalNotifications } from '@capacitor/local-notifications'
+import { Haptics, ImpactStyle } from '@capacitor/haptics'
 import Settings from './Settings'
+import History from './History'
 import './App.css'
 
 const StepCounterNative = registerPlugin('StepCounter')
@@ -58,6 +61,55 @@ function App() {
   }, [])
 
   useEffect(() => {
+    async function requestNotifPermission() {
+      try {
+        const perm = await LocalNotifications.checkPermissions()
+        if (perm.display !== 'granted') {
+          await LocalNotifications.requestPermissions()
+        }
+      } catch (e) {
+        console.log('Ошибка разрешения уведомлений:', e)
+      }
+    }
+    requestNotifPermission()
+  }, [])
+
+  const checkGoalReached = async (currentSteps, currentGoal) => {
+    if (currentSteps < currentGoal) return
+
+    const today = new Date().toISOString().slice(0, 10)
+    const flagKey = 'notified_' + today
+
+    const { value: notified } = await Preferences.get({ key: flagKey })
+    if (notified === 'true') return
+
+    try {
+      await Haptics.impact({ style: ImpactStyle.Heavy })
+      await Haptics.impact({ style: ImpactStyle.Heavy })
+      await Haptics.impact({ style: ImpactStyle.Heavy })
+    } catch (e) {
+      console.log('Вибрация не сработала:', e)
+    }
+
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title: '🎉 Цель достигнута!',
+            body: `Ты прошёл ${currentSteps.toLocaleString('ru-RU')} шагов!`,
+            id: 1,
+            schedule: { at: new Date(Date.now() + 100) },
+          },
+        ],
+      })
+    } catch (e) {
+      console.log('Уведомление не отправилось:', e)
+    }
+
+    await Preferences.set({ key: flagKey, value: 'true' })
+  }
+
+  useEffect(() => {
     let cancelled = false
     let interval = null
 
@@ -76,6 +128,7 @@ function App() {
             if (!cancelled && result && typeof result.steps === 'number') {
               setSteps(result.steps)
               setLoading(false)
+              await checkGoalReached(result.steps, goal)
             }
           } catch (e) {
             if (!cancelled) {
@@ -131,7 +184,7 @@ function App() {
       cancelled = true
       if (interval) clearInterval(interval)
     }
-  }, [])
+  }, [goal])
 
   const maxHistorySteps = Math.max(...history.map((d) => d.steps), goal, 1)
 
@@ -144,11 +197,20 @@ function App() {
     )
   }
 
+  if (view === 'history') {
+    return <History onBack={() => setView('main')} />
+  }
+
   return (
     <div className="app">
-      <button className="settings-btn" onClick={() => setView('settings')}>
-        ⚙️
-      </button>
+      <div className="top-buttons">
+        <button className="settings-btn" onClick={() => setView('history')}>
+          📊
+        </button>
+        <button className="settings-btn" onClick={() => setView('settings')}>
+          ⚙️
+        </button>
+      </div>
 
       <header className="header">
         <h1>Шагомер! 🎉</h1>
