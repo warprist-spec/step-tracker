@@ -41,18 +41,12 @@
             android:exported="true"
             android:foregroundServiceType="dataSync" />
 
-        <receiver
-            android:name="com.naeiut.plugins.backgroundstep.RestartService"
-            android:enabled="true"
-            android:exported="false"
-            android:label="RestartServiceWhenStopped"
-            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
+        
+        <service
+    android:name=".stepcounter.StepCounterService"
+    android:enabled="true"
+    android:exported="false"
+    android:foregroundServiceType="dataSync" />
 
     </application>
 

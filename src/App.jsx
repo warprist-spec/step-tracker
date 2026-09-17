@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { CapacitorPedometer } from '@capgo/capacitor-pedometer'
+import { registerPlugin } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import './App.css'
+
+const StepCounterNative = registerPlugin('StepCounter')
 
 function useAnimatedNumber(target, duration = 600) {
   const [value, setValue] = useState(target)
@@ -46,95 +48,55 @@ function App() {
   const km = (steps * 0.00075).toFixed(2)
 
   useEffect(() => {
-    let listener = null
     let cancelled = false
-
-    let rawPrevious = 0
-    let todayTotal = 0
+    let interval = null
 
     async function init() {
       try {
-        const perm = await CapacitorPedometer.requestPermissions()
-        if (perm.activityRecognition !== 'granted') {
-          if (!cancelled) setError('Нужно разрешение на физическую активность')
-          if (!cancelled) setLoading(false)
-          return
-        }
-
-        await CapacitorPedometer.startMeasurementUpdates()
-
-        const todayKey = new Date().toISOString().slice(0, 10)
-
-        const { value: lastRaw } = await Preferences.get({ key: 'lastRawSteps' })
-        const { value: savedTodaySteps } = await Preferences.get({
-          key: 'history_' + todayKey,
-        })
-
-        rawPrevious = Number(lastRaw || 0)
-        todayTotal = Number(savedTodaySteps || 0)
-
-        let rawCurrent = rawPrevious
+        // 1. Запускаем фоновый сервис
         try {
-          const current = await CapacitorPedometer.getMeasurement()
-          if (current && typeof current.numberOfSteps === 'number') {
-            rawCurrent = current.numberOfSteps
-          }
+          await StepCounterNative.startService()
+          console.log('Фоновый сервис запущен')
         } catch (e) {
-          console.log('Начальное измерение не удалось:', e)
+          console.log('Ошибка запуска сервиса:', e)
         }
 
-        if (rawCurrent < rawPrevious) {
-          rawPrevious = rawCurrent
-          await Preferences.set({
-            key: 'lastRawSteps',
-            value: String(rawCurrent),
-          })
-        }
+        // 2. Функция чтения шагов
+        const fetchSteps = async () => {
+          try {
+            const result = await StepCounterNative.getTodaySteps()
+            if (!cancelled && result && typeof result.steps === 'number') {
+              setSteps(result.steps)
+              setLoading(false)
 
-        if (!cancelled) {
-          setSteps(todayTotal)
-          setLoading(false)
-        }
-
-        listener = await CapacitorPedometer.addListener('measurement', async (data) => {
-          if (!cancelled && data && typeof data.numberOfSteps === 'number') {
-            const raw = data.numberOfSteps
-
-            if (raw < rawPrevious) {
-              rawPrevious = raw
-              await Preferences.set({
-                key: 'lastRawSteps',
-                value: String(raw),
-              })
-              return
-            }
-
-            const delta = raw - rawPrevious
-
-            if (delta > 0) {
-              todayTotal += delta
-              rawPrevious = raw
-
+              // Сохраняем в историю
+              const todayKey = new Date().toISOString().slice(0, 10)
               await Preferences.set({
                 key: 'history_' + todayKey,
-                value: String(todayTotal),
+                value: String(result.steps),
               })
-              await Preferences.set({
-                key: 'lastRawSteps',
-                value: String(raw),
-              })
-
-              if (!cancelled) setSteps(todayTotal)
+            }
+          } catch (e) {
+            if (!cancelled) {
+              setError('Ошибка: ' + (e?.message || e))
+              setLoading(false)
             }
           }
-        })
+        }
 
+        // Первый запрос
+        await fetchSteps()
+
+        // 3. Опрашиваем каждые 5 секунд
+        interval = setInterval(fetchSteps, 5000)
+
+        // Убираем статус загрузки через 5 секунд, даже если данных нет
         setTimeout(() => {
           if (!cancelled) setLoading(false)
         }, 5000)
       } catch (e) {
         if (!cancelled) {
-          setError('Ошибка датчика: ' + (e?.message || e))
+          setError('Ошибка: ' + (e?.message || e))
           setLoading(false)
         }
       }
@@ -144,10 +106,11 @@ function App() {
 
     return () => {
       cancelled = true
-      if (listener && listener.remove) listener.remove()
+      if (interval) clearInterval(interval)
     }
   }, [])
 
+  // История за 7 дней
   useEffect(() => {
     async function loadHistory() {
       const days = []
@@ -215,7 +178,7 @@ function App() {
       </div>
 
       {loading && !error && (
-        <p className="status">Подключаюсь к датчику…</p>
+        <p className="status">Подключаюсь к сервису…</p>
       )}
 
       {error && <p className="error">{error}</p>}
