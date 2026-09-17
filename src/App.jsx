@@ -47,11 +47,12 @@ function App() {
   const circumference = 2 * Math.PI * 130
   const offset = circumference * (1 - progress)
 
-  const ringColor =
-    progress >= 1 ? '#22c55e' : progress >= 0.5 ? '#facc15' : '#6366f1'
-
   const km = (steps * 0.00075).toFixed(2)
 
+  const isGoalReached = progress >= 1
+  const isEmpty = steps === 0
+
+  // Загрузка цели
   useEffect(() => {
     async function loadGoal() {
       const { value } = await Preferences.get({ key: 'goal' })
@@ -60,6 +61,7 @@ function App() {
     loadGoal()
   }, [])
 
+  // Разрешение на уведомления
   useEffect(() => {
     async function requestNotifPermission() {
       try {
@@ -109,6 +111,7 @@ function App() {
     await Preferences.set({ key: flagKey, value: 'true' })
   }
 
+  // Основной цикл
   useEffect(() => {
     let cancelled = false
     let interval = null
@@ -117,7 +120,6 @@ function App() {
       try {
         try {
           await StepCounterNative.startService()
-          console.log('Фоновый сервис запущен')
         } catch (e) {
           console.log('Ошибка запуска сервиса:', e)
         }
@@ -150,6 +152,7 @@ function App() {
                 days.push({
                   date: d.toLocaleDateString('ru-RU', { weekday: 'short' }),
                   steps: Number(result.history[key] || 0),
+                  isToday: i === 0,
                 })
               }
               setHistory(days)
@@ -202,7 +205,10 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      style={{ background: isGoalReached ? '#0d2818' : '#0a0f0a' }}
+    >
       <div className="top-buttons">
         <button className="settings-btn" onClick={() => setView('history')}>
           📊
@@ -213,7 +219,7 @@ function App() {
       </div>
 
       <header className="header">
-        <h1>Шагомер! 🎉</h1>
+        <h1>Сегодня</h1>
         <p className="date">
           {new Date().toLocaleDateString('ru-RU', {
             day: 'numeric',
@@ -229,7 +235,7 @@ function App() {
             cx="150"
             cy="150"
             r="130"
-            strokeWidth="14"
+            strokeWidth="16"
             fill="transparent"
           />
           <circle
@@ -237,24 +243,26 @@ function App() {
             cx="150"
             cy="150"
             r="130"
-            strokeWidth="14"
+            strokeWidth="16"
             fill="transparent"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
             strokeLinecap="round"
-            style={{
-              stroke: ringColor,
-              filter: `drop-shadow(0 0 12px ${ringColor}99)`,
-            }}
           />
         </svg>
         <div className="circle-content">
-          <div className="steps-count">
+          <div className={`steps-count ${isEmpty ? 'empty' : ''}`}>
             {animatedSteps.toLocaleString('ru-RU')}
           </div>
-          <div className="steps-label">🔥 шагов</div>
+          <div className={`steps-label ${isEmpty ? 'empty' : ''}`}>
+            шагов
+          </div>
         </div>
       </div>
+
+      {isEmpty && !loading && (
+        <div className="empty-hint">Начни двигаться</div>
+      )}
 
       {loading && !error && (
         <p className="status">Подключаюсь к сервису…</p>
@@ -268,21 +276,28 @@ function App() {
       </div>
 
       <div className="goal">
-        Цель: {goal.toLocaleString('ru-RU')}
+        Цель: {goal.toLocaleString('ru-RU')} шагов
       </div>
 
       <div className="history">
-        {history.map((day, i) => (
-          <div key={i} className="history-bar-wrapper">
-            <div
-              className="history-bar"
-              style={{
-                height: `${Math.max(2, (day.steps / maxHistorySteps) * 100)}%`,
-              }}
-            />
-            <span className="history-label">{day.date}</span>
-          </div>
-        ))}
+        {history.map((day, i) => {
+          const isEmptyBar = day.steps === 0
+          const barColor = day.isToday ? '#2ecc71' : '#6c5ce7'
+          return (
+            <div key={i} className="history-bar-wrapper">
+              <div
+                className={`history-bar ${isEmptyBar ? 'empty' : ''}`}
+                style={{
+                  height: isEmptyBar
+                    ? '2px'
+                    : `${Math.max(2, (day.steps / maxHistorySteps) * 100)}%`,
+                  background: isEmptyBar ? '#2a2a32' : barColor,
+                }}
+              />
+              <span className="history-label">{day.date}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
