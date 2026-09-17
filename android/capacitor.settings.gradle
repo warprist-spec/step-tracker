@@ -7,9 +7,3 @@ project(':capacitor-preferences').projectDir = new File('../node_modules/@capaci
 
 include ':capgo-capacitor-pedometer'
 project(':capgo-capacitor-pedometer').projectDir = new File('../node_modules/@capgo/capacitor-pedometer/android')
-
-include ':santoshyadavviolet-capacitor-background-service'
-project(':santoshyadavviolet-capacitor-background-service').projectDir = new File('../node_modules/@santoshyadavviolet/capacitor-background-service/android')
-
-include ':capacitor-background-step'
-project(':capacitor-background-step').projectDir = new File('../node_modules/capacitor-background-step/android')

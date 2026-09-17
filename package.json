@@ -15,8 +15,6 @@
     "@capacitor/core": "^8.5.2",
     "@capacitor/preferences": "^8.0.1",
     "@capgo/capacitor-pedometer": "^8.0.41",
-    "@santoshyadavviolet/capacitor-background-service": "^1.0.2",
-    "capacitor-background-step": "^0.2.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
