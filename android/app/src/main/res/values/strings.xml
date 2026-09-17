@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">StepTracker</string>
+    <string name="title_activity_main">StepTracker</string>
+    <string name="package_name">com.example.steptracker</string>
+    <string name="custom_url_scheme">com.example.steptracker</string>
+</resources>
